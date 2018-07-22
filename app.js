@@ -3,9 +3,9 @@ const OAuth2 = require('OAuth2');
 const express = require('express');
 const logger = require('morgan');
 const app = express();
-const bodyParser = require("body-parser");
-const cors = require("cors");
-const session = require("express-session");
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const session = require('express-session');
 const MongoClient = require('mongodb').MongoClient
 const url = 'mongodb://localhost:27017';
 
@@ -20,12 +20,15 @@ MongoClient.connect(url, function(err, client) {
 
 })
 
-
 app.use(logger());
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
-
+app.use(function(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+  });
 
 
 app.use(session({
@@ -37,17 +40,6 @@ app.use(session({
 
 
 var sess;
-// app.get('/', function(req, res) {
-//     sess = req.session;
-
-//     if (sess.email) {
-//         res.redirect('/dashboard');
-//     } else {
-//         res.redirect('/login');
-//     }
-
-// })
-
 
 app.post("/register", function(req, res) {
     let task = req.body;
@@ -56,20 +48,41 @@ app.post("/register", function(req, res) {
     DB.collection("user").find(query).toArray(function(err, result) {
         if (err) throw err;
 
-        if (!result.length) {
+        if (result.length) {
+            res.json("error");
+            console.log("already");            
+        } else {
+            
             DB.collection("user").insertOne(task, function(err, r) {
+                console.log("not already");
                 res.json(r);
             })
-        } else console.log("Email id already registered");
-
-
+        }
+       
     });
 
+})
 
 
 
+
+app.post("/checkForRegister", function(req, res) {
+    let task = req.body;
+    var query = { "email": task.email };
+   
+    DB.collection("user").find(query).toArray(function(err, result) {
+        if (err) throw err;
+
+        else if(result)
+        res.json(result);
+
+        else
+             res.json("notregister");
+       
+    });
 
 })
+
 
 
 
@@ -77,25 +90,24 @@ app.post("/register", function(req, res) {
 app.post("/login", function(req, res) {
 
     let detail = req.body;
+    console.log(detail.email);
+    console.log(detail.password);
 
-    
-    var query = { email: detail.email, password: detail.password, flag: "true" };
+    var query = { "email": detail.email, "pass": detail.password, "flag": "true" };
+
     DB.collection("user").find(query).toArray(function(err, result) {
         if (err) throw err;
 
-        if (result.length) {
+        console.log(result);
+       if (result.length) {
+       
        
             sess= detail.email;
-            req.session.email= detail.email;
-            req.session.save();
-            console.log("logging you in");
-            console.log(req.session.email);
-
-            res.json(req.session.email);
+            res.json(sess);
 
         } 
         else
-            console.log("Invalid User");
+           res.json("Invalid User");
 
 
     });
@@ -107,40 +119,59 @@ app.post("/data",function(req,res){
     if(sess){
 
         
-    res.json({
-        status:true, 
+    res.json([{
+      
         email:sess
-      })
+      }])
     }
-    else{
-        res.json({
-            status:false
-        })
-        return
-    }
+    
 
 })
 
-app.post("/isloggedin",function(req,res){
-    res.json({
-        status:!!sess
-    })
-})
 
 app.post("/logout", function(req, res) {
 
     
-    console.log(sess);
-
     req.session.destroy(function(err) {
         if (err) {
 
             console.log(err);
         } else {
-            // res.redirect('./');
+            
             res.json("logout");
         }
     });
+})
+
+
+
+app.post("/dashboardData", function(req, res) {
+    var query = { "email": sess };
+
+    DB.collection("user").find(query).toArray(function(err, result) {
+        if (err) throw err;
+
+
+ console.log(result);
+        res.send(result);
+
+    });
+    
+    
+})
+
+
+app.post("/rateData", function(req, res) {
+    
+    var query = { "bname": req.body.bname };
+    DB.collection("starrate").find(query).toArray(function(err, result) {
+        if (err) throw err;
+   
+        res.send(result);
+
+    });
+    
+    
 })
 
 
@@ -165,9 +196,8 @@ const transporter = nodemailer.createTransport({
 
 
 
-
 app.post('/send', function(req, res) {
-    console.log("Send api called");
+   
     rand = Math.floor((Math.random() * 100) + 54);
     host = req.get('host');
     link = "http://" + req.get('host') + "/verify?id=" + rand;
@@ -182,7 +212,7 @@ app.post('/send', function(req, res) {
             console.log(error);
             res.end("error");
         } else {
-            console.log("Message sent: " + response.message);
+          
             res.json("sent");
         }
     });
@@ -197,25 +227,43 @@ app.get('/verify', function(req, res) {
             console.log("email is verified");
 
             var myquery = { "email": mailOptions.to };
-            console.log("email id from verify :" + myquery.email);
             var newvalues = { $set: { "flag": "true" } };
 
             DB.collection("user").updateOne(myquery, newvalues, function(err, res) {
                 if (err) throw err;
-                //console.log(res);
+              
 
             });
 
+            rand1 = Math.floor((Math.random() * 1000) + 54);
 
-            res.end("<h1>Email " + mailOptions.to + " is been Successfully verified");
+
+            ownerlink = "http://localhost:4200/customerReview?q="+ rand1;
+
+
+            var myquery   = { "email":mailOptions.to};
+
+            var newvalues = { $set: { "rand": rand1 } };
+        
+                    DB.collection("user").updateOne(myquery, newvalues, function(err, res) {
+                      if (err) throw err;
+                      console.log("1 document updated");
+                    
+                    });
+        
+
+
+
+
+            res.end("<h1>Email:" + mailOptions.to + " is been Successfully verified.Link for Review of your site----><a href='#'>" + ownerlink + "</a></h1>");
             res.redirect('login');
             res.render('login');
         } else {
-            console.log("email is not verified");
-            res.end("<h1>Bad Request</h1>");
+            
+            res.end("<h1>Link is Expired</h1>");
         }
     } else {
-        res.end("<h1>Request is from unknown source");
+        res.end("<h1>Invalid Request");
     }
 });
 
@@ -247,7 +295,7 @@ app.post('/fsend', function(req, res) {
                     console.log(error);
                     res.end("error");
                 } else {
-                    console.log("Message sent: " + response.message);
+                    console.log("Message sent");
                     res.json("sent");
                 }
             });
@@ -255,6 +303,7 @@ app.post('/fsend', function(req, res) {
 
         } else 
         {
+            
             res.json("notSent")
             console.log("Email id not  registered");
         }
@@ -276,7 +325,9 @@ app.post('/fsend', function(req, res) {
 app.post('/business', function(req, res) {
 
 
-    DB.collection("user").find({},{ _id: 0, password: 0, flag: 0 }).toArray(function(err, result) {
+    var query = { rand: req.body.rand };
+
+    DB.collection("user").find(query).toArray(function(err, result) {
         if (err) throw err;
 
 
@@ -295,17 +346,6 @@ app.post("/rate", function(req, res) {
 
            var query = { bname: ratee.bname };
 
-           console.log(ratee.bname);
-           
-            
-     console.log("rate5:"+ratee.rate5);
-     console.log("rate4:"+ratee.rate4);
-     console.log("rate3:"+ratee.rate3);
-     console.log("rate2:"+ratee.rate2);
-     console.log("rate1:"+ratee.rate1);
-
-            
-        
            
 
     DB.collection("starrate").find(query).toArray(function(err, result) {
@@ -350,24 +390,18 @@ app.post("/rate", function(req, res) {
 
         
 app.post("/resetPass", function(req, res) {
-
+ 
+        var myquery   = { "email":mailOptions.to};
+        var newvalues = { $set: { "pass": req.body.password,"cpass":req.body.password } };
     
+                DB.collection("user").updateOne(myquery, newvalues, function(err, result) {
+                 
+            res.json(result);
 
-        
-        var myquery   = { email:req.body.email };
-
-        var newvalues = { $set: { "password": req.body.password } };
-    
-                DB.collection("user").updateOne(myquery, newvalues, function(err, res) {
-                  if (err) throw err;
-                  console.log("1 document updated");
-                
                 });
     
 
-
-        console.log(rest);
-        res.send(res);
+       
 
         });
 
@@ -377,13 +411,15 @@ app.post("/resetPass", function(req, res) {
 app.post('/graph', function(req, res) {
 
 
+    let ratee = req.body;
 
-    DB.collection("starrate").find().toArray(function(err, result) {
-        if (err) throw err;
+    var query = { bname: ratee.bname };
+    
 
+    DB.collection("starrate").find(query).toArray(function(err, result) {
+        if (err) console.log(err);
 
-        console.log(result);
-        res.send(result);
+        res.json(result);
 
     });
 
